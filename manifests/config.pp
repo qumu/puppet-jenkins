@@ -23,7 +23,7 @@ class jenkins::config {
     transition { 'stop-jenkins':
       resource   => Service['jenkins'],
       attributes => { ensure => stopped },
-      prior_to   => user[$::jenkins::user],
+      prior_to   => User[$::jenkins::user],
     }
 
     ensure_resource('user', $::jenkins::user, {
