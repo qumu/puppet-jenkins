@@ -72,7 +72,7 @@ class jenkins::cli {
     tries       => 10,
     try_sleep   => 2,
     refreshonly => true,
-    require     => File[$jar],
+    require     => [File[$jar],Service[jenkins]]
   }
 
   # jenkins::cli::reload should be included only after $::jenkins::cli::cmd is
