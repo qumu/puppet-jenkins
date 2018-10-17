@@ -7,21 +7,19 @@
 # PuppetX::Jenkins::Provider::Clihelper class for compatiblity with the puppet
 # resource face.  No defaults should be set in this classes definition.
 class jenkins::cli::config(
-  $cli_jar                 = undef,
-  $url                     = undef,
-  $ssh_private_key         = undef,
-  $puppet_helper           = undef,
-  $cli_tries               = undef,
-  $cli_try_sleep           = undef,
-  $ssh_private_key_content = undef,
+  Optional[Stdlib::Absolutepath] $cli_jar         = undef,
+  Optional[String] $url                           = undef,
+  Optional[Stdlib::Absolutepath] $ssh_private_key = undef,
+  Optional[Stdlib::Absolutepath] $puppet_helper   = undef,
+  Optional[Integer] $cli_tries                    = undef,
+  Optional[Numeric] $cli_try_sleep                = undef,
+  Optional[String] $cli_username                  = undef,
+  Optional[String] $cli_password                  = undef,
+  Optional[String] $cli_password_file             = '/tmp/jenkins_credentials_for_puppet',
+  Boolean $cli_password_file_exists               = false,
+  Optional[Boolean] $cli_remoting_free            = undef,
+  Optional[String] $ssh_private_key_content       = undef,
 ) {
-  if $cli_jar { validate_absolute_path($cli_jar) }
-  validate_string($url)
-  if $ssh_private_key { validate_absolute_path($ssh_private_key) }
-  if $puppet_helper { validate_absolute_path($puppet_helper) }
-  if $cli_tries { validate_integer($cli_tries) }
-  if $cli_try_sleep { validate_numeric($cli_try_sleep) }
-  validate_string($ssh_private_key_content)
 
   if str2bool($::is_pe) {
     $gem_provider = 'pe_gem'
@@ -61,4 +59,28 @@ class jenkins::cli::config(
       }
     }
   }
+
+  # We manage the password file, to avoid printing username/password in the 
+  # ps ax output.
+  # If file exists, we assume the user manages permissions and content
+  if $cli_username and $cli_password and !$cli_password_file_exists {
+    file { $cli_password_file:
+      ensure  => 'file',
+      mode    => '0400',
+      backup  => false,
+      content => "${cli_username}:${cli_password}",
+    }
+
+    # allow this class to be included when not running as root
+    if $::id == 'root' {
+      File[$cli_password_file] {
+        # the owner/group should probably be set externally and retrieved if
+        # present in the manfiest. At present, there is no authoritative place
+        # to retrive this information from.
+        owner => 'jenkins',
+        group => 'jenkins',
+      }
+    }
+  }
+
 }

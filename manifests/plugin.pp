@@ -16,34 +16,24 @@
 #   https://example.org/myplugin.hpi
 #
 define jenkins::plugin(
-  $version         = undef,
-  $manage_config   = false,
-  $config_filename = undef,
-  $config_content  = undef,
-  $update_url      = undef,
-  $enabled         = true,
-  $source          = undef,
-  $digest_string   = undef,
-  $digest_type     = 'sha1',
-  $pin             = true,
+  Optional[String] $version         = undef,
+  Optional[String] $config_filename = undef,
+  Optional[String] $config_content  = undef,
+  Optional[String] $update_url      = undef,
+  Optional[String] $source          = undef,
+  Optional[String] $digest_string   = undef,
+  Boolean $manage_config            = false,
+  Boolean $enabled                  = true,
+  String $digest_type               = 'sha1',
+  Boolean $pin                      = false,
   # no worky
-  $timeout         = undef,
+  Any $timeout                      = undef,
   # deprecated
-  $plugin_dir      = undef,
-  $username        = undef,
-  $group           = undef,
-  $create_user     = undef,
+  Any $plugin_dir                   = undef,
+  Any $username                     = undef,
+  Any $group                        = undef,
+  Any $create_user                  = undef,
 ) {
-  validate_string($version)
-  validate_bool($manage_config)
-  validate_string($config_filename)
-  validate_string($config_content)
-  validate_string($update_url)
-  validate_bool($enabled)
-  validate_string($source)
-  validate_string($digest_string)
-  validate_string($digest_type)
-  validate_bool($pin)
 
   if $timeout {
     warning('jenkins::plugin::timeout presently has effect')
@@ -85,7 +75,7 @@ define jenkins::plugin(
       default => $update_url,
     }
     $base_url = "${plugins_host}/latest/"
-    $search   = "${name} "
+    $search   = "^${name} "
   }
 
   # if $source is specified, it overrides any other URL construction
@@ -101,9 +91,15 @@ define jenkins::plugin(
     fail("unsupported plugin extension in source url: ${download_url}")
   }
 
-  $installed_plugins = $::jenkins_plugins ? {
+  $installed_plugins = fact('jenkins_plugins') ? {
     undef   => [],
     default => strip(split($::jenkins_plugins, ',')),
+  }
+
+  # create a file resource for the download + unpacked plugin dir to prevent it
+  # from being recursively deleted
+  if $::jenkins::purge_plugins {
+    file { "${::jenkins::plugin_dir}/${name}": }
   }
 
   if (empty(grep($installed_plugins, $search))) {
@@ -142,7 +138,7 @@ define jenkins::plugin(
       group   => $::jenkins::group,
       mode    => '0644',
       require => Archive[$plugin],
-      notify  => Service['jenkins'],
+      notify  => Class['::jenkins::service'],
     }
 
     $pinned_ensure = $pin ? {
@@ -155,37 +151,45 @@ define jenkins::plugin(
       owner   => $::jenkins::user,
       group   => $::jenkins::group,
       require => Archive[$plugin],
-      notify  => Service['jenkins'],
+      notify  => Class['::jenkins::service'],
     }
 
     if $digest_string {
       $checksum_verify = true
-      $checksum = $digest_string
+      $checksum        = $digest_string
+      $checksum_type   = $digest_type
     } else {
       $checksum_verify = false
-      $checksum = undef
+      $checksum        = undef
+      $checksum_type   = undef
     }
 
-    archive { $plugin:
+    exec{"force ${plugin}-${version}":
+      command => "/bin/rm -rf ${::jenkins::plugin_dir}/${plugin}",
+    }
+    -> archive { $plugin:
       source          => $download_url,
       path            => "${::jenkins::plugin_dir}/${plugin}",
       checksum_verify => $checksum_verify,
       checksum        => $checksum,
-      checksum_type   => $digest_type,
-      proxy_server    => $::jenkins::proxy_server,
+      checksum_type   => $checksum_type,
+      proxy_server    => $::jenkins::proxy::url,
       cleanup         => false,
       extract         => false,
       require         => File[$::jenkins::plugin_dir],
-      notify          => Service['jenkins'],
+      notify          => Class['::jenkins::service'],
     }
+    $archive_require = Archive[$plugin]
+  } else {
+    $archive_require = undef
+  }
 
-    file { "${::jenkins::plugin_dir}/${plugin}" :
-      owner   => $::jenkins::user,
-      group   => $::jenkins::group,
-      mode    => '0644',
-      require => Archive[$plugin],
-      before  => Service['jenkins'],
-    }
+  file { "${::jenkins::plugin_dir}/${plugin}" :
+    owner   => $::jenkins::user,
+    group   => $::jenkins::group,
+    mode    => '0644',
+    require => $archive_require,
+    before  => Class['::jenkins::service'],
   }
 
   if $manage_config {
@@ -199,7 +203,7 @@ define jenkins::plugin(
       owner   => $::jenkins::user,
       group   => $::jenkins::group,
       mode    => '0644',
-      notify  => Service['jenkins']
+      notify  => Class['::jenkins::service'],
     }
   }
 }

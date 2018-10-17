@@ -17,15 +17,13 @@
 # Jenkins security configuration
 #
 class jenkins::security (
-  $security_model = undef,
+  String $security_model,
 ){
-  validate_string($security_model)
-
   include ::jenkins::cli_helper
 
-  Class['jenkins::cli_helper'] ->
-    Class['jenkins::security'] ->
-      Anchor['jenkins::end']
+  Class['jenkins::cli_helper']
+    -> Class['jenkins::security']
+      -> Anchor['jenkins::end']
 
   # XXX not idempotent
   jenkins::cli::exec { "jenkins-security-${security_model}":
@@ -33,5 +31,6 @@ class jenkins::security (
       'set_security',
       $security_model,
     ],
+    unless  => "\$HELPER_CMD get_authorization_strategyname | grep -q -e '^${security_model}\$'",
   }
 }

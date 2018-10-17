@@ -1,15 +1,10 @@
 # puppet-jenkins
 
-[![Build Status](https://travis-ci.org/jenkinsci/puppet-jenkins.svg?branch=master)](https://travis-ci.org/jenkinsci/puppet-jenkins)
+[![Build Status](https://travis-ci.org/voxpupuli/puppet-jenkins.svg?branch=master)](https://travis-ci.org/voxpupuli/puppet-jenkins)
 
 This is intended to be a re-usable
 [Puppet](http://www.puppetlabs.com/puppet/introduction/) module that you can
 include in your own tree.
-
-# Jenkins 2
-
-This module does not presently support Jenkins 2.x due to incompatible changes
-with 1.x.  Support is planned for a future release.
 
 # Experimental Types and Providers
 
@@ -31,6 +26,46 @@ these types will be considered part of the public API or treated as private to
 the module.**
 
 See [NATIVE_TYPES_AND_PROVIDERS.md](NATIVE_TYPES_AND_PROVIDERS.md)
+
+# Jenkins 2.54 and 2.46.2 remoting free CLI and username / password CLI auth
+
+## Remoting Free CLI
+
+Jenkins refactored the CLI in 2.54 and 2.46.2 in response to several security
+incidents (See [JENKINS-41745](https://issues.jenkins-ci.org/browse/JENKINS-41745). This module has been adjusted to support the new CLI. However you
+need to tell the module if the new remoting free cli is in place. Please set
+```$::jenkins::cli_remoting_free``` to true for latest Jenkins servers.
+
+Note: This is not the default to support backward compatibility. This may become
+a default once this module is released in a new version.
+
+Also note that the module tries to do heuristics for this setting if not specified.
+You can always set this parameter to enforce usage of old or new CLI interface.
+
+Heuristics:
+
+  * LTS:
+    * If manage_repo and repo == lts and version = latest -> true
+    * If manage_repo and repo == lts and version >= 2.46.2 -> true
+    * else false
+  * Non-LTS:
+    * If manage_repo and repo != lts and version = latest -> true
+    * If manage_repo and repo != lts and version >= 2.54 -> true
+    * else false
+
+## Username and Password Auth
+
+The new CLI also supports proper authentication with username and password. This
+has not been supported in this module for a long time, but is a requirement for
+supporting AD and OpenID authentications (there is no ssh key there). You can now
+also supply ```$::jenkins::cli_username``` and ```$::jenkins::cli_password``` to
+use username / password based authentication. Then the puppet automation user can
+also reside in A.D
+
+Note: latest jenkins (2.54++ and 2.46.2++) require a ssh username, so you must also
+provide ```$::jenkins::cli_username``` for ssh. If you specify both username/password
+and ssh key file, SSH authentication is preferred.
+
 
 # Using puppet-jenkins
 
@@ -102,8 +137,7 @@ By default, the resource will install the latest plugin, i.e.:
 
 If you specify `version => 'latest'` in current releases of the module, the
 plugin will be downloaded and installed with *every* run of Puppet. This is a
-known issue and will be addressed in future releases. For now it is recommended
-that you pin plugin versions when using the `jenkins::plugin` type.
+known issue and will be addressed in future releases.
 
 #### By version
 If you need to peg a specific version, simply specify that as a string, i.e.:
@@ -171,15 +205,6 @@ It requires the swarm plugin on the master & the class jenkins::slave on the sla
     }
 ```
 
-### Dependencies
-
-The dependencies for this module currently are:
-
-* [stdlib module](http://forge.puppetlabs.com/puppetlabs/stdlib)
-* [apt module](http://forge.puppetlabs.com/puppetlabs/apt) (for Debian/Ubuntu users)
-* [java module](http://github.com/puppetlabs/puppetlabs-java)
-* [zypprepo](https://forge.puppetlabs.com/darin/zypprepo) (for SUSE users)
-* [archive module](https://forge.puppetlabs.com/puppet/archive)
 
 ### Depending on Jenkins
 
@@ -195,7 +220,7 @@ the following `require` statement:
 
 ### Advanced features
 1. Plugin Hash - jenkins::plugins
-2. Config Hash - jennkins::config
+2. Config Hash - jenkins::config
 3. Configure Firewall - jenkins (init.pp)
 4. Outbound Jenkins Proxy Config - jenkins (init.pp)
 5. [CLI Helper](#cli-helper)

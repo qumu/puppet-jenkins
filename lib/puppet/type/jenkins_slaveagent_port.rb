@@ -1,6 +1,6 @@
-require 'puppet_x/jenkins/type/cli'
+require_relative '../../puppet/x/jenkins/type/cli'
 
-PuppetX::Jenkins::Type::Cli.newtype(:jenkins_slaveagent_port) do
+Puppet::X::Jenkins::Type::Cli.newtype(:jenkins_slaveagent_port) do
   @doc = "Manage Jenkins' slave agent listening port"
 
   # the cli jar does not have an interface for plugin removal so the only
@@ -14,7 +14,7 @@ PuppetX::Jenkins::Type::Cli.newtype(:jenkins_slaveagent_port) do
     isnamevar
 
     munge do |value|
-      if value.is_a?(String) and value =~ /^[0-9]+$/
+      if value.is_a?(String) && value =~ %r{^[0-9]+$}
         Integer(value)
       else
         value
@@ -26,12 +26,12 @@ PuppetX::Jenkins::Type::Cli.newtype(:jenkins_slaveagent_port) do
   [
     :jenkins_user,
     :jenkins_security_realm,
-    :jenkins_authorization_strategy,
+    :jenkins_authorization_strategy
   ].each do |type|
     autorequire(type) do
-      catalog.resources.find_all do |r|
+      catalog.resources.select do |r|
         r.is_a?(Puppet::Type.type(type))
       end
     end
   end
-end # PuppetX::Jenkins::Type::Cli.newtype
+end # Puppet::X::Jenkins::Type::Cli.newtype

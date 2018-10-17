@@ -1,59 +1,36 @@
-# Define: jenkins::job
+# This class create a new jenkins job given a name and config xml
 #
-#   This class create a new jenkins job given a name and config xml
-#
-# Parameters:
-#
-#   config
-#     the content of the jenkins job config file (required)
-#
-#   source
-#     path to a puppet file() resource containing the Jenkins XML job description
-#     will override 'config' if set
-#
-#   template
-#     path to a puppet template() resource containing the Jenkins XML job description
-#     will override 'config' if set
-#
-#   jobname = $title
-#     the name of the jenkins job
-#
-#   enabled = true
-#     whether to enable the job
-#
-#   ensure = 'present'
-#     choose 'absent' to ensure the job is removed
-#
-#   difftool = '/usr/bin/diff -b-q'
-#     Provide a command to execute to compare Jenkins job files
-#
+# @param config The content of the jenkins job config file (required)
+# @param source Path to a puppet file() resource containing the Jenkins XML job description.
+#     Will override 'config' if set
+# @param template Path to a puppet template() resource containing the Jenkins XML job description.
+#     Will override 'config' if set
+# @param jobname the name of the jenkins job
+# @param enabled deprecated parameter (will have no effect if set)
+# @param ensure choose 'absent' to ensure the job is removed
+# @param difftool Provide a command to execute to compare Jenkins job files
+# @param replace
+#     Whether or not to replace the job if it already exists.
 define jenkins::job(
-  $config,
-  $source   = undef,
-  $template = undef,
-  $jobname  = $title,
-  $enabled  = true,
-  $ensure   = 'present',
-  $difftool = '/usr/bin/diff -b -q',
+  String $config,
+  Optional[String] $source                  = undef,
+  Optional[Stdlib::Absolutepath] $template  = undef,
+  String $jobname                           = $title,
+  Any $enabled                              = undef,
+  Enum['present', 'absent'] $ensure         = 'present',
+  String $difftool                          = '/usr/bin/diff -b -q',
+  Boolean $replace                          = true
 ){
-  validate_string($config)
-  if $source { validate_absolute_path($source) }
-  if $template { validate_absolute_path($template) }
-  validate_string($jobname)
-  if ! is_bool($enabled) {
-    warning("Passing non-boolean values to jenkins::job::enabled is deprecated-- ${enabled} is not a boolean")
-    $real_enabled = num2bool($enabled)
-  } else {
-    $real_enabled = $enabled
+
+  if $enabled {
+    warning("You set \$enabled to ${enabled}, this parameter is now deprecated, nothing will change whatever is its value")
   }
-  validate_re($ensure, '^present$|^absent$')
-  validate_string($difftool)
 
   include ::jenkins::cli
 
-  Class['jenkins::cli'] ->
-    Jenkins::Job[$title] ->
-      Anchor['jenkins::end']
+  Class['jenkins::cli']
+    -> Jenkins::Job[$title]
+      -> Anchor['jenkins::end']
 
   if ($ensure == 'absent') {
     jenkins::job::absent { $title:
@@ -73,8 +50,9 @@ define jenkins::job(
     jenkins::job::present { $title:
       config   => $realconfig,
       jobname  => $jobname,
-      enabled  => $real_enabled,
+      enabled  => $enabled,
       difftool => $difftool,
+      replace  => $replace,
     }
   }
 

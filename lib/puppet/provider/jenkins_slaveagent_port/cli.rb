@@ -1,8 +1,7 @@
-require 'puppet_x/jenkins/util'
-require 'puppet_x/jenkins/provider/cli'
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/util')
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/provider/cli')
 
-Puppet::Type.type(:jenkins_slaveagent_port).provide(:cli, :parent => PuppetX::Jenkins::Provider::Cli) do
-
+Puppet::Type.type(:jenkins_slaveagent_port).provide(:cli, parent: Puppet::X::Jenkins::Provider::Cli) do
   mk_resource_methods
 
   def self.instances(catalog = nil)
@@ -11,7 +10,7 @@ Puppet::Type.type(:jenkins_slaveagent_port).provide(:cli, :parent => PuppetX::Je
     # there can be only one value
     Puppet.debug("#{sname} instances: #{n}")
 
-    [new(:name => n, :ensure => :present)]
+    [new(name: n, ensure: :present)]
   end
 
   def flush
@@ -19,14 +18,14 @@ Puppet::Type.type(:jenkins_slaveagent_port).provide(:cli, :parent => PuppetX::Je
     when :present
       set_slaveagent_port
     else
-      fail("invalid :ensure value: #{self.ensure}")
+      raise Puppet::Error, "invalid :ensure value: #{self.ensure}"
     end
   end
 
   private
 
   def self.get_slaveagent_port(catalog = nil)
-    clihelper(['get_slaveagent_port'], :catalog => catalog).to_i
+    clihelper(['get_slaveagent_port'], catalog: catalog).to_i
   end
   private_class_method :get_slaveagent_port
 

@@ -1,6 +1,6 @@
-require 'puppet_x/jenkins/type/cli'
+require_relative '../../puppet/x/jenkins/type/cli'
 
-PuppetX::Jenkins::Type::Cli.newtype(:jenkins_credentials) do
+Puppet::X::Jenkins::Type::Cli.newtype(:jenkins_credentials) do
   @doc = <<-EOS
     Manage Jenkins' credentials
 
@@ -32,7 +32,12 @@ PuppetX::Jenkins::Type::Cli.newtype(:jenkins_credentials) do
     defaultto :UsernamePasswordCredentialsImpl
     newvalues(:UsernamePasswordCredentialsImpl,
               :BasicSSHUserPrivateKey,
-              :StringCredentialsImpl)
+              :ConduitCredentialsImpl,
+              :StringCredentialsImpl,
+              :FileCredentialsImpl,
+              :AWSCredentialsImpl,
+              :GitLabApiTokenImpl,
+              :GoogleRobotPrivateKeyCredentials)
   end
 
   newproperty(:description) do
@@ -50,6 +55,14 @@ PuppetX::Jenkins::Type::Cli.newtype(:jenkins_credentials) do
 
   newproperty(:private_key) do
     desc 'ssh private key string - BasicSSHUserPrivateKey'
+  end
+
+  newproperty(:access_key) do
+    desc 'AWS access key - AWSCredentialsImpl'
+  end
+
+  newproperty(:secret_key) do
+    desc 'AWS secret key - AWSCredentialsImpl'
   end
 
   newproperty(:passphrase) do
@@ -76,16 +89,40 @@ PuppetX::Jenkins::Type::Cli.newtype(:jenkins_credentials) do
     desc 'name of the java class implimenting the key store - CertificateCredentialsImpl'
   end
 
+  newproperty(:token) do
+    desc 'conduit token - ConduitCredentialsImpl'
+  end
+
+  newproperty(:api_token) do
+    desc 'API token - GitLabApiTokenImpl'
+  end
+
+  newproperty(:url) do
+    desc 'URL of phabriactor installation - ConduitCredentialsImpl'
+  end
+
+  newproperty(:json_key) do
+    desc 'Prettified JSON key string - GoogleRobotPrivateKeyCredentials'
+  end
+
+  newproperty(:email_address) do
+    desc 'Email address used with a P12 key - GoogleRobotPrivateKeyCredentials'
+  end
+
+  newproperty(:p12_key) do
+    desc 'P12 key string in Base64 format without line wrapping - GoogleRobotPrivateKeyCredentials'
+  end
+
   # require all authentication & authorization related types
   [
     :jenkins_user,
     :jenkins_security_realm,
-    :jenkins_authorization_strategy,
+    :jenkins_authorization_strategy
   ].each do |type|
     autorequire(type) do
-      catalog.resources.find_all do |r|
+      catalog.resources.select do |r|
         r.is_a?(Puppet::Type.type(type))
       end
     end
   end
-end # PuppetX::Jenkins::Type::Cli.newtype
+end # Puppet::X::Jenkins::Type::Cli.newtype

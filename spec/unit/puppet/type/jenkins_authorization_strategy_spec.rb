@@ -1,8 +1,8 @@
 require 'spec_helper'
-require 'unit/puppet_x/spec_jenkins_types'
+require 'unit/puppet/x/spec_jenkins_types'
 
 describe Puppet::Type.type(:jenkins_authorization_strategy) do
-  before(:each) { Facter.clear }
+  before { Facter.clear }
 
   describe 'parameters' do
     describe 'name' do

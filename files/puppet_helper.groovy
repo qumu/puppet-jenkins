@@ -103,7 +103,7 @@ class Util {
     def tokenProperty = user.getProperty(jenkins.security.ApiTokenProperty)
     if (tokenProperty != null) {
       conf['api_token_public'] = tokenProperty.getApiToken()
-      conf['api_token_plain'] = tokenProperty.@apiToken.getPlainText()
+      conf['api_token_plain'] = tokenProperty.@apiToken?.getPlainText()
     }
 
     def passwordProperty = user.getProperty(hudson.security.HudsonPrivateSecurityRealm.Details)
@@ -202,6 +202,13 @@ class Util {
     found
   }
 
+  def requirePlugin(String plugin) {
+    def j = Jenkins.getInstance()
+
+    if (! j.getPlugin(plugin)) {
+      throw new MissingRequiredPlugin(plugin)
+    }
+  }
 } // class Util
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -223,10 +230,12 @@ class Actions {
   // create or update user
   /////////////////////////
   void create_or_update_user(String user_name, String email, String password="", String full_name="", String public_keys="") {
+    util.requirePlugin('mailer')
+
     def user = hudson.model.User.get(user_name)
     user.setFullName(full_name)
 
-    def email_param = new hudson.tasks.Mailer.UserProperty(email)
+    def email_param = this.class.classLoader.loadClass('hudson.tasks.Mailer$UserProperty').newInstance(email)
     user.addProperty(email_param)
 
     def pw_param = hudson.security.HudsonPrivateSecurityRealm.Details.fromPlainPassword(password)
@@ -243,11 +252,11 @@ class Actions {
   /////////////////////////
   // create or update user from JSON
   /////////////////////////
-  void user_update() { // or create
+  void user_update(String jsonfile) { // or create
     // parse JSON doc from stdin
     def slurper = new groovy.json.JsonSlurper()
-    def text = bindings.stdin.text
-    def conf = slurper.parseText(text)
+    def conf = slurper.parse(new File(jsonfile))
+
 
     // a user id is required
     def id = conf['id']
@@ -263,8 +272,9 @@ class Actions {
 
     def email_address = conf['email_address']
     if (email_address) {
+      util.requirePlugin('mailer')
       assert email_address instanceof String
-      def email_param = new hudson.tasks.Mailer.UserProperty(email_address)
+      def email_param = this.class.classLoader.loadClass('hudson.tasks.Mailer$UserProperty').newInstance(email_address)
       user.addProperty(email_param)
     }
 
@@ -376,13 +386,15 @@ class Actions {
         password
       )
     } else {
+      util.requirePlugin('ssh-credentials')
+
       def key_source
-      if (private_key.startsWith('-----BEGIN')) {
-        key_source = new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(private_key)
+      if (private_key =~ /^(\s*)-----BEGIN(.*)/) {
+        key_source = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey$DirectEntryPrivateKeySource').newInstance(private_key)
       } else {
-        key_source = new BasicSSHUserPrivateKey.FileOnMasterPrivateKeySource(private_key)
+        key_source = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey$FileOnMasterPrivateKeySource').newInstance(private_key)
       }
-      credentials = new BasicSSHUserPrivateKey(
+      credentials = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey').newInstance(
         CredentialsScope.GLOBAL,
         id,
         username,
@@ -456,7 +468,7 @@ class Actions {
     current_credentials['password'] = credentials.password.plainText
     } else {
       current_credentials['private_key'] = credentials.privateKey
-      current_credentials['passphrase'] = credentials.passphrase.plainText
+      current_credentials['passphrase'] = credentials.passphrase?.plainText
     }
 
     def builder = new groovy.json.JsonBuilder(current_credentials)
@@ -497,28 +509,37 @@ class Actions {
         impl:  cred.class.getSimpleName(),
       ]
 
-      switch (cred) {
-        case com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl:
+      switch (cred.getClass().getName()) {
+        case 'com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl':
           info['description'] = cred.description
           info['username'] = cred.username
           info['password'] = cred.password.plainText
           break
-        case com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey:
+        case 'com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey':
           info['description'] = cred.description
           info['username'] = cred.username
           info['private_key'] = cred.privateKey
-          info['passphrase'] = cred.passphrase.plainText
+          info['passphrase'] = cred.passphrase?.plainText
           break
-        case org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl:
+        case 'com.dabsquared.gitlabjenkins.connection.GitLabApiTokenImpl':
+          info['api_token'] = cred.apiToken.plainText
+          info['description'] = cred.description
+          break
+        case 'org.jenkinsci.plugins.plaincredentials.impl.StringCredentialsImpl':
           info['description'] = cred.description
           info['secret'] = cred.secret.plainText
           break
-        case org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl:
+        case 'org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl':
           info['description'] = cred.description
           info['file_name'] = cred.getFileName()
           info['content'] = IOUtils.toString(cred.getContent(), "UTF-8")
           break
-        case com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl:
+        case 'com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl':
+          info['description'] = cred.description
+          info['access_key'] = cred.getAccessKey()
+          info['secret_key'] = cred.getSecretKey().plainText
+          break
+        case 'com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl':
           def keyStoreSource = cred.getKeyStoreSource()
 
           info['description'] = cred.description
@@ -526,15 +547,30 @@ class Actions {
           info['password_empty'] = cred.passwordEmpty
           info['key_store_impl'] = keyStoreSource.class.getSimpleName()
 
-          switch (keyStoreSource) {
-            case com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl$UploadedKeyStoreSource:
+          switch (keyStoreSource.getClass().getName()) {
+            case 'com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl$UploadedKeyStoreSource':
               info['content'] = IOUtils.toString(keyStoreSource.getKeyStoreBytes(), "UTF-8")
               break
-            case com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl$FileOnMasterKeyStoreSource:
+            case 'com.cloudbees.plugins.credentials.impl.CertificateCredentialsImpl$FileOnMasterKeyStoreSource':
               info['source'] = keyStoreSource.getKeyStoreFile()
               break
             default:
               throw new UnsupportedCredentialsClass("unsupported " + keyStoreSource)
+          }
+          break
+        case 'com.google.jenkins.plugins.credentials.oauth.GoogleRobotPrivateKeyCredentials':
+          info['json_key'] = null
+          info['email_address'] = null
+          info['p12_key'] = null
+
+          def serviceAccountConfig = cred.getServiceAccountConfig()
+          if (serviceAccountConfig.getClass().getName() == 'com.google.jenkins.plugins.credentials.oauth.JsonServiceAccountConfig') {
+            info['json_key'] = Secret.fromString(new File(serviceAccountConfig.getJsonKeyFile()).getText('UTF-8')).getPlainText()
+          } else if (serviceAccountConfig.getClass().getName() == 'com.google.jenkins.plugins.credentials.oauth.P12ServiceAccountConfig') {
+            info['email_address'] = serviceAccountConfig.getEmailAddress()
+            info['p12_key'] = new File(serviceAccountConfig.getP12KeyFile()).getBytes().encodeBase64().toString()
+          } else {
+            throw new UnsupportedCredentialsClass("unsupported service account config " + serviceAccountConfig.getClass().getName())
           }
           break
         default:
@@ -555,13 +591,12 @@ class Actions {
    * modify an existing credentials specified by a JSON document passed via
    * the stdin
   */
-  void credentials_update_json() {
+  void credentials_update_json(String jsonfile) {
     def j = Jenkins.getInstance()
 
     // parse JSON doc from stdin
     def slurper = new groovy.json.JsonSlurper()
-    def text = bindings.stdin.text
-    def conf = slurper.parseText(text)
+    def conf = slurper.parse(new File(jsonfile))
 
     def cred = null
     switch (conf['impl']) {
@@ -576,10 +611,13 @@ class Actions {
         )
         break
       case 'BasicSSHUserPrivateKey':
-        def key = new BasicSSHUserPrivateKey.DirectEntryPrivateKeySource(
+        util.requirePlugin('ssh-credentials')
+
+        def key = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey$DirectEntryPrivateKeySource').newInstance(
           conf['private_key']
         )
-        cred = new BasicSSHUserPrivateKey(
+
+        cred = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.sshcredentials.impl.BasicSSHUserPrivateKey').newInstance(
           // CredentialsScope is an enum
           CredentialsScope."${conf['scope']}",
           conf['id'],
@@ -590,9 +628,7 @@ class Actions {
         )
         break
       case 'StringCredentialsImpl':
-        if (! j.getPlugin('plain-credentials')) {
-          throw new MissingRequiredPlugin('plain-credentials')
-        }
+        util.requirePlugin('plain-credentials')
 
         // we can not declare:
         // import org.jenkinsci.plugins.plaincredentials.impl.*
@@ -603,6 +639,75 @@ class Actions {
           conf['id'],
           conf['description'],
           new Secret(conf['secret'])
+        )
+        break
+      case 'FileCredentialsImpl':
+        util.requirePlugin('plain-credentials')
+
+        cred = this.class.classLoader.loadClass('org.jenkinsci.plugins.plaincredentials.impl.FileCredentialsImpl').newInstance(
+          CredentialsScope."${conf['scope']}",
+          conf['id'],
+          conf['description'],
+          conf['file_name'],
+          SecretBytes.fromBytes(conf['content'].getBytes())
+        )
+        break
+      case 'AWSCredentialsImpl':
+        util.requirePlugin('aws-credentials')
+
+        cred = this.class.classLoader.loadClass('com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl').newInstance(
+          CredentialsScope."${conf['scope']}",
+          conf['id'],
+          conf['access_key'],
+          conf['secret_key'],
+          conf['description'],
+        )
+        break
+      case 'GitLabApiTokenImpl':
+        util.requirePlugin('gitlab-plugin')
+
+        cred = this.class.classLoader.loadClass('com.dabsquared.gitlabjenkins.connection.GitLabApiTokenImpl').newInstance(
+          CredentialsScope."${conf['scope']}",
+          conf['id'],
+          conf['description'],
+          new Secret(conf['api_token']),
+        )
+        break
+      case 'GoogleRobotPrivateKeyCredentials':
+        util.requirePlugin('google-oauth-plugin')
+
+        def getFileItemFromString = { id, keyByteArray, classLoader ->
+          def fileItemFactory = classLoader.loadClass('org.apache.commons.fileupload.disk.DiskFileItemFactory').newInstance()
+          fileItemFactory.setSizeThreshold(keyByteArray.length)
+          def fileItem = fileItemFactory.createItem('tempfile', 'plain/text', false, id)
+          def outputStream = fileItem.getOutputStream()
+          outputStream.write(keyByteArray, 0 , keyByteArray.length)
+          outputStream.flush()
+          outputStream.close()
+
+          return fileItem
+        }
+
+        def serviceAccountConfig = null
+        if (conf['json_key'] != null) {
+          serviceAccountConfig = this.class.classLoader.loadClass('com.google.jenkins.plugins.credentials.oauth.JsonServiceAccountConfig').newInstance(
+            getFileItemFromString(conf['id'], conf['json_key'].getBytes(), this.class.classLoader),
+            null
+          )
+        } else if (conf['email_address'] != null && conf['p12_key'] != null) {
+          serviceAccountConfig = this.class.classLoader.loadClass('com.google.jenkins.plugins.credentials.oauth.P12ServiceAccountConfig').newInstance(
+            conf['email_address'],
+            getFileItemFromString(conf['id'], conf['p12_key'].decodeBase64(), this.class.classLoader),
+            null
+          )
+        } else {
+          throw new InvalidCredentialsId("Either 'json_key' or 'email_address' and 'p12_key' have to be defined")
+        }
+
+        cred = this.class.classLoader.loadClass('com.google.jenkins.plugins.credentials.oauth.GoogleRobotPrivateKeyCredentials').newInstance(
+          conf['id'],
+          serviceAccountConfig,
+          null
         )
         break
       default:
@@ -726,7 +831,7 @@ class Actions {
               realm.getGithubWebUri(),
               realm.getGithubApiUri(),
               realm.getClientID(),
-              realm.getClientSecret(),
+              realm.getClientSecret().plainText,
               realm.getOauthScopes(),
             ],
           ],
@@ -765,6 +870,22 @@ class Actions {
   }
 
   ////////////////////////
+  // get_authorization_strategyname
+  ////////////////////////
+  void get_authorization_strategyname() {
+
+    def authorizationStrategyName = ''
+    def j = Jenkins.getInstance()
+    def strategy = j.getAuthorizationStrategy()
+    if ((String)strategy.getClass().getName() == 'hudson.security.FullControlOnceLoggedInAuthorizationStrategy' ) {
+      authorizationStrategyName = 'full_control'
+    } else if ((String)strategy.getClass().getName() == 'hudson.security.AuthorizationStrategy$Unsecured' ) {
+      authorizationStrategyName = 'unsecured'
+    }
+    out.println(authorizationStrategyName)
+  }
+
+  ////////////////////////
   // get_authorization_strategy
   ////////////////////////
   void get_authorization_strategy() {
@@ -773,7 +894,7 @@ class Actions {
 
     def className = strategy.getClass().getName()
     def config
-    switch (strategy) {
+    switch (className) {
       // github-oauth
       case 'org.jenkinsci.plugins.GithubAuthorizationStrategy':
         config = [
@@ -787,6 +908,7 @@ class Actions {
               strategy.allowGithubWebHookPermission,
               strategy.allowCcTrayPermission,
               strategy.allowAnonymousReadPermission,
+              strategy.allowAnonymousJobStatusPermission,
             ],
           ],
         ]
@@ -823,7 +945,7 @@ class Actions {
   ////////////////////////
   // set_jenkins_instance
   ////////////////////////
-  void set_jenkins_instance() {
+  void set_jenkins_instance(String jsonfile) {
     def j = Jenkins.getInstance()
 
     def setup = { info ->
@@ -843,8 +965,7 @@ class Actions {
 
     // parse JSON doc from stdin
     def slurper = new groovy.json.JsonSlurper()
-    def text = bindings.stdin.text
-    def conf = slurper.parseText(text)
+    def conf = slurper.parse(new File(jsonfile))
 
     // each key in the hash is a method on the Jenkins singleton.  The key's
     // value is an object to instantiate and pass to the method.  (currently,

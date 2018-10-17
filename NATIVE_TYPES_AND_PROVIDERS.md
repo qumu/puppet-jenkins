@@ -36,9 +36,44 @@ setup.  The parameters used to override default values are:
 * `puppet_helper`
 * `cli_tries`
 * `cli_try_sleep`
+* `cli_username`
+* `cli_password`
+* `cli_password_file`
+* `cli_password_file_exists`
+* `cli_remoting_free`
+
+An example for a secured jenkins (e.g. ad connected) for LTS version
+newer then 2.46.2 (e.g. 2.60.1)
+
+```
+class { 'jenkins::cli::config':
+  cli_username      => 'puppet',
+  cli_password_file => 'thisisanactivedirectorypassword',
+  cli_remoting_free => true,
+  cli_tries         => 3,
+  cli_try_sleep     => 1,
+}
+```
+
+An example for a secured jenkins (e.g. ad connected) for LTS version
+newer then 2.46.2 (e.g. 2.60.1) using an existing credentials file.
+Note: The file /root/password_file_for_puppet with content
+      username:password must already exist or be created via puppet.
+
+```
+class { 'jenkins::cli::config':
+  cli_username             => 'puppet',
+  cli_password_file        => '/root/password_file_for_puppet',
+  cli_remoting_free        => true,
+  cli_password_file_exists => true,
+  cli_tries                => 3,
+  cli_try_sleep            => 1,
+}
+```
 
 An example of setting a non-default path to the ssh key used to authenticate the
-`cli` with jenkins are reducing the number of retry attempts.
+`cli` with jenkins are reducing the number of retry attempts. Note: This only works
+for OLD versions of jenkins.
 
 ```
 class { 'jenkins::cli::config':
@@ -239,7 +274,11 @@ jenkins_credentials { '<id>':
 
 * `UsernamePasswordCredentialsImpl`
 * `BasicSSHUserPrivateKey`
+* `StringCredentialsImpl`
 * `FileCredentialsImpl`
+* `AWSCredentialsImpl`
+* `ConduitCredentialsImpl`
+* `GitLabApiTokenImpl`
 
 XXX This type has properties for other credentials classes that are not currently supported.
 
@@ -273,7 +312,7 @@ jenkins_credentials { 'a0469025-1202-4007-983d-0c62f230f1a7':
 }
 ```
 
-#### `FileCredentialsImpl`
+#### `StringCredentialsImpl`
 
 Using this credential type requires that the jenkins `plain-credentials` plugin
 has been installed.
@@ -286,6 +325,89 @@ jenkins_credentials { '150b2895-b0eb-4813-b8a5-3779690c063c':
   impl        => 'StringCredentialsImpl',
   scope       => 'SYSTEM',
   secret      => '42',
+}
+```
+
+#### `FileCredentialsImpl`
+
+Using this credential type requires that the jenkins `plain-credentials` plugin
+has been installed.
+
+```
+jenkins_credentials { '95bfe159-8bf0-4605-be20-47e201220e7c':
+  ensure      => 'present',
+  description => 'secret file with very secret data',
+  domain      => undef,
+  impl        => 'FileCredentialsImpl',
+  scope       => 'GLOBAL',
+  file_name   => 'foo.bar',
+  content     => 'secret data on 1st line\nsecret data on 2nd line'
+}
+```
+
+#### `AWSCredentialsImpl`
+
+Using this credential type requires that the jenkins `aws-credentials` plugin
+has been installed.
+
+```
+jenkins_credentials { '34d75c64-61ff-4a28-bd40-cac3aafc7e3a':
+  ensure      => 'present',
+  description => 'aws credential',
+  impl        => 'AWSCredentialsImpl',
+  access_key  => 'much access',
+  secret_key  => 'many secret',
+}
+```
+
+### `ConduitCredentialsImpl`
+
+```
+jenkins_credentials { '002224bd-60cb-49f3-a314-d0f73f82233d':
+  ensure      => 'present',
+  description => 'phabricator-jenkins-conduit',
+  domain      => undef,
+  impl        => 'ConduitCredentialsImpl',
+  token       => '{PRIVATE TOKEN}',
+  url         => 'https://my-phabricator-repo.com',
+}
+```
+
+### `GitLabApiTokenImpl`
+
+```
+jenkins_credentials { '7e86e9fb-a8af-480f-b596-7191dc02bf38':
+  ensure      => 'present',
+  description => 'GitLab API token',
+  impl        => 'GitLabApiTokenImpl',
+  api_token   => 'tokens for days',
+}
+```
+
+### `GoogleRobotPrivateKeyCredentials`
+
+Using this credential type requires that the jenkins `google-oauth-plugin` plugin
+has been installed.
+
+```
+jenkins_credentials { '587690b0-f793-44e6-bc46-889cce58fb71':
+  ensure   => 'present',
+  impl     => 'GoogleRobotPrivateKeyCredentials',
+  json_key => @END
+  {
+    "client_email": "random@developer.gserviceaccount.com",
+    "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+  }
+  | END,
+}
+```
+or
+```
+jenkins_credentials { '2f867d0d-e0c7-48a6-a355-1d4fd2ac6c22':
+  ensure        => 'present',
+  impl          => 'GoogleRobotPrivateKeyCredentials',
+  email_address => 'random@developer.gserviceaccount.com',
+  p12_key       => 'LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCg==',
 }
 ```
 

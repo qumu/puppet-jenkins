@@ -13,11 +13,10 @@
 #     the name of the jenkins job
 #
 define jenkins::job::absent(
-  $jobname = $title,
+  String $jobname = $title,
 ){
-  validate_string($jobname)
 
-  include jenkins::cli
+  include ::jenkins::cli
 
   if $jenkins::service_ensure == 'stopped' or $jenkins::service_ensure == false {
     fail('Management of Jenkins jobs requires \$jenkins::service_ensure to be set to \'running\'')

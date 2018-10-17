@@ -1,8 +1,9 @@
-require 'puppet_x/jenkins/util'
-require 'puppet_x/jenkins/provider/cli'
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/util')
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/provider/cli')
 
-Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => PuppetX::Jenkins::Provider::Cli) do
+require 'json'
 
+Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, parent: Puppet::X::Jenkins::Provider::Cli) do
   mk_resource_methods
 
   def self.instances(catalog = nil)
@@ -15,9 +16,7 @@ Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => Pupp
   end
 
   def flush
-    unless resource.nil?
-      @property_hash = resource.to_hash
-    end
+    @property_hash = resource.to_hash unless resource.nil?
 
     case self.ensure
     when :present
@@ -25,7 +24,7 @@ Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => Pupp
     when :absent
       set_strategy_unsecured
     else
-      fail("invalid :ensure value: #{self.ensure}")
+      raise Puppet::Error, "invalid :ensure value: #{self.ensure}"
     end
   end
 
@@ -37,13 +36,13 @@ Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => Pupp
     ctor_args = info[method_name][class_name]
 
     args = {
-      :name      => class_name,
-      :ensure    => :present,
-      :arguments => ctor_args,
+      name: class_name,
+      ensure: :present,
+      arguments: ctor_args
     }
 
     # map nil -> :undef
-    args = PuppetX::Jenkins::Util.undefize(args)
+    args = Puppet::X::Jenkins::Util.undefize(args)
     new(args)
   end
   private_class_method :from_hash
@@ -51,26 +50,26 @@ Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => Pupp
   def to_hash
     ctor = {}
 
-    if arguments == :absent
-      ctor[name] = []
-    else
-      ctor[name] = arguments
-    end
+    ctor[name] = if arguments == :absent
+                   []
+                 else
+                   arguments
+                 end
     Puppet.debug("to_hash arguments #{arguments}")
 
     info = { 'setAuthorizationStrategy' => ctor }
     # map :undef -> nil
-    PuppetX::Jenkins::Util.unundef(info)
+    Puppet::X::Jenkins::Util.unundef(info)
   end
 
   # jenkins only supports a single configured security realm at a time
   def self.get_authorization_strategy(catalog = nil)
-    raw = clihelper(['get_authorization_strategy'], :catalog => catalog)
+    raw = clihelper(['get_authorization_strategy'], catalog: catalog)
 
     begin
       JSON.parse(raw)
     rescue JSON::ParserError
-      fail("unable to parse as JSON: #{raw}")
+      raise Puppet::Error, "unable to parse as JSON: #{raw}"
     end
   end
   private_class_method :get_authorization_strategy
@@ -78,14 +77,14 @@ Puppet::Type.type(:jenkins_authorization_strategy).provide(:cli, :parent => Pupp
   def set_jenkins_instance(input = nil)
     input ||= to_hash
 
-    clihelper(['set_jenkins_instance'], :stdinjson => input)
+    clihelper(['set_jenkins_instance'], stdinjson: input)
   end
 
   def set_strategy_unsecured
     input = {
       'setAuthorizationStrategy' => {
-        'hudson.security.AuthorizationStrategy$Unsecured' => [],
-      },
+        'hudson.security.AuthorizationStrategy$Unsecured' => []
+      }
     }
     set_jenkins_instance(input)
   end

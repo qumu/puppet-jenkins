@@ -1,26 +1,25 @@
-require 'puppet_x/jenkins/util'
-require 'puppet_x/jenkins/provider/cli'
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/util')
+require File.join(File.dirname(__FILE__), '../../..', 'puppet/x/jenkins/provider/cli')
 
-Puppet::Type.type(:jenkins_user).provide(:cli, :parent => PuppetX::Jenkins::Provider::Cli) do
+require 'json'
 
+Puppet::Type.type(:jenkins_user).provide(:cli, parent: Puppet::X::Jenkins::Provider::Cli) do
   mk_resource_methods
 
   def self.instances(catalog = nil)
     all = user_info_all(catalog)
 
-    Puppet.debug("#{sname} instances: #{all.collect {|i| i['id']}}")
+    Puppet.debug("#{sname} instances: #{all.map { |i| i['id'] }}")
 
-    all.collect {|info| from_hash(info) }
+    all.map { |info| from_hash(info) }
   end
 
-  def api_token_public=(value)
-    fail 'api_token_pubilc is read-only'
+  def api_token_public=(_value)
+    raise Puppet::Error, 'api_token_public is read-only'
   end
 
   def flush
-    unless resource.nil?
-      @property_hash = resource.to_hash
-    end
+    @property_hash = resource.to_hash unless resource.nil?
 
     case self.ensure
     when :present
@@ -28,7 +27,7 @@ Puppet::Type.type(:jenkins_user).provide(:cli, :parent => PuppetX::Jenkins::Prov
     when :absent
       delete_user
     else
-      fail("invalid :ensure value: #{self.ensure}")
+      raise Puppet::Error, "invalid :ensure value: #{self.ensure}"
     end
   end
 
@@ -36,18 +35,16 @@ Puppet::Type.type(:jenkins_user).provide(:cli, :parent => PuppetX::Jenkins::Prov
 
   def self.from_hash(info)
     # map nil -> :undef
-    info = PuppetX::Jenkins::Util.undefize(info)
+    info = Puppet::X::Jenkins::Util.undefize(info)
 
-    new({
-      :name             => info['id'],
-      :ensure           => :present,
-      :full_name        => info['full_name'],
-      :email_address    => info['email_address'],
-      :api_token_plain  => info['api_token_plain'],
-      :api_token_public => info['api_token_public'],
-      :public_keys      => info['public_keys'],
-      :password         => info['password'],
-    })
+    new(name: info['id'],
+        ensure: :present,
+        full_name: info['full_name'],
+        email_address: info['email_address'],
+        api_token_plain: info['api_token_plain'],
+        api_token_public: info['api_token_public'],
+        public_keys: info['public_keys'],
+        password: info['password'])
   end
   private_class_method :from_hash
 
@@ -55,33 +52,30 @@ Puppet::Type.type(:jenkins_user).provide(:cli, :parent => PuppetX::Jenkins::Prov
     info = { 'id' => name }
 
     properties = self.class.resource_type.validproperties
-    properties.reject! {|x| x == :ensure }
-    properties.reject! {|x| x == :api_token_public}
+    properties.reject! { |x| x == :ensure }
+    properties.reject! { |x| x == :api_token_public }
 
     properties.each do |prop|
       value = @property_hash[prop]
-      unless value.nil?
-        info[prop.to_s] = value
-      end
+      info[prop.to_s] = value unless value.nil?
     end
 
     # map :undef -> nil
-    PuppetX::Jenkins::Util.unundef(info)
+    Puppet::X::Jenkins::Util.unundef(info)
   end
 
   # array of hashes for multiple users
   def self.user_info_all(catalog = nil)
-    raw = nil
-    unless catalog.nil?
-      raw = clihelper(['user_info_all'], :catalog => catalog)
-    else
-      raw = clihelper(['user_info_all'])
-    end
+    raw = if catalog.nil?
+            clihelper(['user_info_all'])
+          else
+            clihelper(['user_info_all'], catalog: catalog)
+          end
 
     begin
       JSON.parse(raw)
     rescue JSON::ParserError
-      fail("unable to parse as JSON: #{raw}")
+      raise Puppet::Error, "unable to parse as JSON: #{raw}"
     end
   end
   private_class_method :user_info_all
@@ -89,7 +83,7 @@ Puppet::Type.type(:jenkins_user).provide(:cli, :parent => PuppetX::Jenkins::Prov
   def user_update
     input ||= to_hash
 
-    clihelper(['user_update'], :stdinjson => input)
+    clihelper(['user_update'], stdinjson: input)
   end
 
   def delete_user
